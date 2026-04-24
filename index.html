@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Hand Reaching Video</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #video-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #main-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #webcam-video {
+            display: none; 
+        }
+        /* === START OVERLAY === */
+        #start-overlay {
+            position: absolute;
+            inset: 0;
+            background: #0b0b0a;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            text-align: center;
+            font-family: 'Share Tech Mono', monospace;
+        }
+        .so-eyebrow {
+            font-size: 10px;
+            letter-spacing: .6em;
+            text-transform: uppercase;
+            color: rgba(201,196,180,.45);
+            margin-bottom: 48px;
+        }
+        .so-designation {
+            font-size: clamp(11px,1.1vw,14px);
+            letter-spacing: .55em;
+            text-transform: uppercase;
+            color: rgba(201,196,180,.55);
+            margin-bottom: 20px;
+        }
+        .so-title {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: clamp(52px, 9vw, 130px);
+            font-weight: 300;
+            letter-spacing: .06em;
+            color: rgba(201,196,180,.92);
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+        .so-title .so-slash { color: rgba(138,106,59,.8); margin: 0 .08em; }
+        .so-sub {
+            font-size: 11px;
+            letter-spacing: .5em;
+            text-transform: uppercase;
+            color: rgba(201,196,180,.35);
+            margin-bottom: 64px;
+        }
+        .so-rule {
+            width: min(380px, 60vw);
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(201,196,180,.35), transparent);
+            margin-bottom: 48px;
+        }
+        .so-status {
+            font-size: 10px;
+            letter-spacing: .4em;
+            text-transform: uppercase;
+            color: rgba(201,196,180,.4);
+            margin-bottom: 36px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .so-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: rgba(201,196,180,.35);
+            animation: dotPulse 2s ease-in-out infinite;
+        }
+        @keyframes dotPulse { 0%,100%{opacity:.25} 50%{opacity:1} }
+
+        #start-btn {
+            position: relative;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+            letter-spacing: .5em;
+            text-transform: uppercase;
+            color: rgba(201,196,180,.85);
+            background: transparent;
+            border: 1px solid rgba(201,196,180,.3);
+            padding: 16px 40px;
+            cursor: pointer;
+            transition: border-color .3s, color .3s, background .3s;
+            outline: none;
+        }
+        #start-btn::before, #start-btn::after {
+            content: "";
+            position: absolute;
+            width: 10px; height: 10px;
+        }
+        #start-btn::before {
+            top: -1px; left: -1px;
+            border-top: 1px solid rgba(201,196,180,.8);
+            border-left: 1px solid rgba(201,196,180,.8);
+        }
+        #start-btn::after {
+            bottom: -1px; right: -1px;
+            border-bottom: 1px solid rgba(201,196,180,.8);
+            border-right: 1px solid rgba(201,196,180,.8);
+        }
+        #start-btn:hover {
+            border-color: rgba(201,196,180,.7);
+            color: #c9c4b4;
+            background: rgba(201,196,180,.05);
+        }
+        .so-corner {
+            position: absolute;
+            width: 40px; height: 40px;
+        }
+        .so-corner.tl { top: 28px; left: 28px; border-top: 1px solid rgba(201,196,180,.25); border-left: 1px solid rgba(201,196,180,.25); }
+        .so-corner.tr { top: 28px; right: 28px; border-top: 1px solid rgba(201,196,180,.25); border-right: 1px solid rgba(201,196,180,.25); }
+        .so-corner.bl { bottom: 28px; left: 28px; border-bottom: 1px solid rgba(201,196,180,.25); border-left: 1px solid rgba(201,196,180,.25); }
+        .so-corner.br { bottom: 28px; right: 28px; border-bottom: 1px solid rgba(201,196,180,.25); border-right: 1px solid rgba(201,196,180,.25); }
+        .so-sig {
+            position: absolute;
+            bottom: 44px;
+            font-size: 9px; letter-spacing: .4em;
+            color: rgba(201,196,180,.2);
+            text-transform: uppercase;
+        }
+
+        /* === IDLE PROMPT (shows after 3s no hand) === */
+        #idle-prompt {
+            position: absolute;
+            left: 50%; top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 6;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity .6s ease;
+            text-align: center;
+            font-family: 'Share Tech Mono', monospace;
+        }
+        #idle-prompt.visible { opacity: 1; }
+        .ip-bracket {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+        .ip-line {
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(201,196,180,.4));
+        }
+        .ip-line.r {
+            background: linear-gradient(270deg, transparent, rgba(201,196,180,.4));
+        }
+        .ip-label {
+            font-size: 9px;
+            letter-spacing: .55em;
+            text-transform: uppercase;
+            color: rgba(201,196,180,.5);
+        }
+        .ip-main {
+            font-size: clamp(13px, 1.6vw, 18px);
+            letter-spacing: .35em;
+            text-transform: uppercase;
+            color: rgba(201,196,180,.88);
+            animation: ipPulse 2.4s ease-in-out infinite;
+        }
+        .ip-sub {
+            margin-top: 10px;
+            font-size: 9px;
+            letter-spacing: .45em;
+            text-transform: uppercase;
+            color: rgba(201,196,180,.35);
+        }
+        .ip-dots {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+        }
+        .ip-dots span {
+            width: 4px; height: 4px;
+            border-radius: 50%;
+            background: rgba(201,196,180,.5);
+            animation: ipDot 1.8s ease-in-out infinite;
+        }
+        .ip-dots span:nth-child(2) { animation-delay: .3s; }
+        .ip-dots span:nth-child(3) { animation-delay: .6s; }
+        @keyframes ipPulse { 0%,100%{opacity:.55} 50%{opacity:1} }
+        @keyframes ipDot { 0%,100%{opacity:.2; transform:scaleY(.6)} 50%{opacity:1; transform:scaleY(1)} }
+
+        /* === YoRHa intro HUD === */
+        .intro-hud {
+            position: absolute; inset: 0;
+            pointer-events: none; z-index: 4;
+            color: rgba(201,196,180,.8);
+            font-family: 'Share Tech Mono', monospace;
+            letter-spacing: .4em; text-transform: uppercase;
+        }
+        .intro-hud .corner {
+            position: absolute; width: 54px; height: 54px;
+            border: 1px solid rgba(201,196,180,.5);
+        }
+        .intro-hud .tl { top: 22px; left: 22px; border-right:none; border-bottom:none; }
+        .intro-hud .tr { top: 22px; right: 22px; border-left:none; border-bottom:none; }
+        .intro-hud .bl { bottom: 22px; left: 22px; border-right:none; border-top:none; }
+        .intro-hud .br { bottom: 22px; right: 22px; border-left:none; border-top:none; }
+        .intro-hud .tag-top {
+            position:absolute; top:30px; left:50%; transform:translateX(-50%);
+            font-size:10px;
+        }
+        .intro-hud .tag-bottom {
+            position:absolute; bottom:32px; left:50%; transform:translateX(-50%);
+            font-size:10px; opacity:.6;
+            animation: pulse 1.6s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:.35} 50%{opacity:.9} }
+
+        /* scanlines on the flipbook */
+        #scan-overlay {
+            position:absolute; inset:0; pointer-events:none; z-index:3;
+            background: repeating-linear-gradient(to bottom,
+                rgba(255,255,255,.035) 0 1px, transparent 1px 3px);
+            mix-blend-mode: overlay;
+        }
+
+        /* === CRACK overlay (SVG) === */
+        #crack-svg {
+            position:absolute; inset:0; width:100%; height:100%;
+            pointer-events:none; z-index:8; opacity:0;
+        }
+        #crack-svg.active { opacity: 1; }
+        #crack-svg path {
+            fill:none;
+            stroke: rgba(245,242,230,.95);
+            stroke-width: 1.4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            filter: drop-shadow(0 0 4px rgba(255,255,255,.9))
+                    drop-shadow(0 0 10px rgba(255,255,255,.4));
+            stroke-dasharray: 1600;
+            stroke-dashoffset: 1600;
+        }
+        #crack-svg.active path {
+            animation: drawCrack .55s cubic-bezier(.2,.7,.2,1) forwards;
+        }
+        @keyframes drawCrack { to { stroke-dashoffset: 0; } }
+
+        /* screen shake */
+        body.shake #video-container { animation: shake .55s cubic-bezier(.36,.07,.19,.97); }
+        @keyframes shake {
+            10%,90%{transform:translate(-3px,1px)}
+            20%,80%{transform:translate(5px,-2px)}
+            30%,50%,70%{transform:translate(-7px,3px)}
+            40%,60%{transform:translate(7px,-1px)}
+        }
+
+        /* shards */
+        #shards { position:absolute; inset:0; z-index:9; pointer-events:none; }
+        .shard {
+            position:absolute; inset:0;
+            background-size: cover; background-position: center;
+            transform-origin: 50% 50%;
+            will-change: transform, opacity, filter;
+            animation: shatter 1.25s cubic-bezier(.3,.1,.2,1) forwards;
+            filter: brightness(1.02) contrast(1.05);
+        }
+        @keyframes shatter {
+            0%   { transform: translate(0,0) rotate(0) scale(1); opacity:1; filter:brightness(1.4); }
+            8%   { filter: brightness(1.1); }
+            100% { transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(.65); opacity:0; }
+        }
+
+        /* fast cut to black after shards → redirect */
+        #final-flash {
+            position:fixed; inset:0; background:#0b0b0a;
+            opacity:0; pointer-events:none; z-index:100;
+            transition: opacity .25s ease-in;
+        }
+        #final-flash.active { opacity:1; }
+
+        .fading-out #intro-hud,
+        .fading-out #idle-prompt { opacity: 0; transition: opacity .3s; }
+    </style>
+</head>
+<body>
+
+    <div id="video-container">
+        <canvas id="main-canvas"></canvas>
+        <video id="webcam-video" autoplay playsinline></video>
+
+        <div id="scan-overlay"></div>
+
+        <div id="intro-hud" class="intro-hud">
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+            <div class="tag-top">YoRHa // System Boot</div>
+            <div class="tag-bottom">Reach to Establish Link</div>
+        </div>
+
+        <!-- crack / shatter layers -->
+        <svg id="crack-svg" preserveAspectRatio="none" viewBox="0 0 1920 1080"></svg>
+        <div id="shards"></div>
+
+        <!-- idle prompt (shows after 3s no hand) -->
+        <div id="idle-prompt">
+            <div class="ip-bracket">
+                <div class="ip-line"></div>
+                <div class="ip-label">Signal Lost</div>
+                <div class="ip-line r"></div>
+            </div>
+            <div class="ip-main">Hold Your Hand to the Camera</div>
+            <div class="ip-sub">// raise your hand · the closer, the further you go</div>
+            <div class="ip-dots">
+                <span></span><span></span><span></span>
+            </div>
+        </div>
+
+        <div id="start-overlay">
+            <div class="so-corner tl"></div>
+            <div class="so-corner tr"></div>
+            <div class="so-corner bl"></div>
+            <div class="so-corner br"></div>
+            <div class="so-eyebrow">YoRHa // Command Bunker · Orbital Station</div>
+            <div class="so-designation">// No.2 Type B — Combat Android</div>
+            <div class="so-title">NieR<span class="so-slash">:</span>Automata</div>
+            <div class="so-sub">Glory to Mankind</div>
+            <div class="so-rule"></div>
+            <div class="so-status">
+                <div class="so-dot"></div>
+                <span>Tactical Link Ready</span>
+                <div class="so-dot"></div>
+            </div>
+            <button id="start-btn">[ Establish Link ]</button>
+            <div class="so-sig">SIG.0451 · Ver 1.22474487139</div>
+        </div>
+    </div>
+    <div id="final-flash"></div>
+
+    <script>
+        const startBtn = document.getElementById('start-btn');
+        const startOverlay = document.getElementById('start-overlay');
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d');
+        const webcamVideo = document.getElementById('webcam-video');
+        const idlePrompt = document.getElementById('idle-prompt');
+
+        // --- FLIPBOOK CONFIGURATION ---
+        const TOTAL_FRAMES = 139;
+        const FPS = 60;
+        const FRAME_INTERVAL = 1000 / FPS;
+        const REACH_AREA_THRESHOLD = 0.08;
+
+        let frames = [];
+        let currentFrameIndex = 1;
+        let isReaching = false;
+        let playbackInterval = null;
+        let handLostTimer = null;
+        let imagesLoaded = 0;
+
+        // --- IDLE PROMPT (3s no hand) ---
+        let idleTimer = null;
+        function resetIdleTimer() {
+            idlePrompt.classList.remove('visible');
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => idlePrompt.classList.add('visible'), 3000);
+        }
+
+        // --- PRELOAD IMAGES ---
+        function preloadImages() {
+            for (let i = 1; i <= TOTAL_FRAMES; i++) {
+                const img = new Image();
+                const paddedNumber = String(i).padStart(3, '0');
+                img.src = `frames/ezgif-frame-${paddedNumber}.jpg`;
+                img.onload = () => {
+                    imagesLoaded++;
+                    if (imagesLoaded === TOTAL_FRAMES) {
+                        canvas.width = frames[0].width;
+                        canvas.height = frames[0].height;
+                        drawFrame(1);
+                    }
+                };
+                frames.push(img);
+            }
+        }
+        preloadImages();
+
+        function drawFrame(index) {
+            if (frames[index - 1] && frames[index - 1].complete) {
+                ctx.drawImage(frames[index - 1], 0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        // --- PLAYBACK LOGIC ---
+        let shattered = false;
+        function playForward() {
+            clearInterval(playbackInterval);
+            playbackInterval = setInterval(() => {
+                if (currentFrameIndex < TOTAL_FRAMES) {
+                    currentFrameIndex++;
+                    drawFrame(currentFrameIndex);
+                    if (currentFrameIndex === TOTAL_FRAMES && !shattered) {
+                        shattered = true;
+                        clearInterval(playbackInterval);
+                        setTimeout(triggerShatter, 140);
+                    }
+                }
+            }, FRAME_INTERVAL);
+        }
+
+        function playBackward() {
+            clearInterval(playbackInterval);
+            playbackInterval = setInterval(() => {
+                if (currentFrameIndex > 1) {
+                    currentFrameIndex--;
+                    drawFrame(currentFrameIndex);
+                } else {
+                    clearInterval(playbackInterval);
+                }
+            }, FRAME_INTERVAL);
+        }
+
+        // --- MEDIAPIPE HAND TRACKING LOGIC ---
+        function onResults(results) {
+            if (shattered) return;
+            let handDetectedAndLargeEnough = false;
+
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                let minX = 1, minY = 1, maxX = 0, maxY = 0;
+                for (const landmark of landmarks) {
+                    if (landmark.x < minX) minX = landmark.x;
+                    if (landmark.y < minY) minY = landmark.y;
+                    if (landmark.x > maxX) maxX = landmark.x;
+                    if (landmark.y > maxY) maxY = landmark.y;
+                }
+                const boundingBoxArea = (maxX - minX) * (maxY - minY);
+                if (boundingBoxArea > REACH_AREA_THRESHOLD) {
+                    handDetectedAndLargeEnough = true;
+                }
+            }
+
+            if (handDetectedAndLargeEnough) {
+                clearTimeout(handLostTimer);
+                resetIdleTimer();
+                if (!isReaching) {
+                    isReaching = true;
+                    playForward();
+                }
+            } else {
+                if (isReaching) {
+                    isReaching = false;
+                    clearTimeout(handLostTimer);
+                    handLostTimer = setTimeout(() => {
+                        playBackward();
+                        resetIdleTimer();
+                    }, 150);
+                }
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+        hands.onResults(onResults);
+
+        // --- CRACK + SHATTER → transition to landing page ---
+        function buildCrackSVG() {
+            const svg = document.getElementById('crack-svg');
+            const W = 1920, H = 1080;
+            // crack origin = roughly where the hand arrives (center, slightly upper)
+            const ox = W/2, oy = H/2;
+            const paths = [];
+
+            // main radial fractures (12 primary)
+            const primaryCount = 12;
+            for (let i = 0; i < primaryCount; i++) {
+                const a = (i / primaryCount) * Math.PI * 2 + (Math.random()-.5) * 0.2;
+                let x = ox, y = oy;
+                let d = `M ${x} ${y}`;
+                const segments = 5 + Math.floor(Math.random()*3);
+                let len = 40;
+                let ang = a;
+                for (let s = 0; s < segments; s++) {
+                    ang += (Math.random()-.5) * 0.5;
+                    len *= 1.6;
+                    x += Math.cos(ang) * len;
+                    y += Math.sin(ang) * len;
+                    d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
+                    // branch
+                    if (Math.random() < 0.55 && s > 1) {
+                        const bAng = ang + (Math.random() < .5 ? -1 : 1) * (0.5 + Math.random()*0.5);
+                        const bLen = len * (0.4 + Math.random()*0.4);
+                        const bx = x + Math.cos(bAng) * bLen;
+                        const by = y + Math.sin(bAng) * bLen;
+                        paths.push(`M ${x.toFixed(1)} ${y.toFixed(1)} L ${bx.toFixed(1)} ${by.toFixed(1)}`);
+                    }
+                }
+                paths.push(d);
+            }
+
+            // concentric cracks near impact
+            for (let r = 0; r < 3; r++) {
+                const radius = 30 + r * 25;
+                let d = '';
+                const pts = 10;
+                for (let i = 0; i <= pts; i++) {
+                    const a = (i / pts) * Math.PI * 2;
+                    const jit = 1 + (Math.random()-.5) * .4;
+                    const px = ox + Math.cos(a) * radius * jit;
+                    const py = oy + Math.sin(a) * radius * jit;
+                    d += (i === 0 ? 'M' : ' L') + ` ${px.toFixed(1)} ${py.toFixed(1)}`;
+                }
+                paths.push(d);
+            }
+
+            svg.innerHTML = paths.map(d => `<path d="${d}"/>`).join('');
+        }
+
+        function triggerShatter() {
+            document.body.classList.add('fading-out');
+
+            // 1) crack appears + shake (no white flash — crack glow is the impact)
+            buildCrackSVG();
+            const crackSvg = document.getElementById('crack-svg');
+            crackSvg.classList.add('active');
+            document.body.classList.add('shake');
+
+            // 2) after crack drawn, shatter into shards
+            setTimeout(() => {
+                document.body.classList.remove('shake');
+
+                // snapshot the final frame
+                const dataURL = canvas.toDataURL('image/jpeg', 0.85);
+
+                const shards = document.getElementById('shards');
+                const N = 22;
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+                // impact center (slightly above middle, matches where hand arrives)
+                const cxPct = 50;
+                const cyPct = 48;
+
+                // points on expanded border at each angle
+                const farR = Math.hypot(vw, vh);
+                for (let i = 0; i < N; i++) {
+                    const a1 = (i / N) * Math.PI * 2 + (Math.random()-.5) * 0.12;
+                    const a2 = ((i + 1) / N) * Math.PI * 2 + (Math.random()-.5) * 0.12;
+                    const p1x = (vw/2 + Math.cos(a1) * farR) / vw * 100;
+                    const p1y = (vh/2 + Math.sin(a1) * farR) / vh * 100;
+                    const p2x = (vw/2 + Math.cos(a2) * farR) / vw * 100;
+                    const p2y = (vh/2 + Math.sin(a2) * farR) / vh * 100;
+                    // jitter the "center" origin so cracks look irregular
+                    const cxJ = cxPct + (Math.random()-.5) * 10;
+                    const cyJ = cyPct + (Math.random()-.5) * 10;
+
+                    const shard = document.createElement('div');
+                    shard.className = 'shard';
+                    shard.style.backgroundImage = `url(${dataURL})`;
+                    shard.style.clipPath = `polygon(${cxJ}% ${cyJ}%, ${p1x}% ${p1y}%, ${p2x}% ${p2y}%)`;
+                    shard.style.webkitClipPath = shard.style.clipPath;
+
+                    const midA = (a1 + a2) / 2;
+                    const dist = 340 + Math.random() * 480;
+                    const tx = Math.cos(midA) * dist;
+                    const ty = Math.sin(midA) * dist + 120; // slight gravity bias
+                    const rot = (Math.random() - 0.5) * 80;
+                    shard.style.setProperty('--tx', tx.toFixed(0) + 'px');
+                    shard.style.setProperty('--ty', ty.toFixed(0) + 'px');
+                    shard.style.setProperty('--rot', rot.toFixed(0) + 'deg');
+                    shard.style.animationDelay = (Math.random() * 0.12).toFixed(3) + 's';
+                    shards.appendChild(shard);
+                }
+
+                // hide the underlying canvas + cracks as shards fly
+                canvas.style.transition = 'opacity .15s';
+                canvas.style.opacity = '0';
+                crackSvg.style.transition = 'opacity .4s';
+                crackSvg.style.opacity = '0';
+
+                // 3) cut to black → redirect
+                setTimeout(() => {
+                    document.getElementById('final-flash').classList.add('active');
+                    setTimeout(() => {
+                        window.location.href = 'nier-hero.html';
+                    }, 260);
+                }, 900);
+            }, 520);
+        }
+
+        // --- STARTUP LOGIC ---
+        startBtn.addEventListener('click', async () => {
+            if (imagesLoaded < TOTAL_FRAMES) {
+                alert(`Please wait for all frames to finish loading in the background! Loaded ${imagesLoaded}/${TOTAL_FRAMES}`);
+                return;
+            }
+            startOverlay.style.display = 'none';
+
+            const camera = new Camera(webcamVideo, {
+                onFrame: async () => { await hands.send({image: webcamVideo}); },
+                width: 640, height: 480
+            });
+            camera.start().then(() => resetIdleTimer());
+        });
+    </script>
+</body>
+</html>
