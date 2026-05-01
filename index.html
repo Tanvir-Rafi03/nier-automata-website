@@ -612,6 +612,7 @@
                 setTimeout(() => {
                     document.getElementById('final-flash').classList.add('active');
                     setTimeout(() => {
+                        sessionStorage.setItem('intro_done', '1');
                         window.location.href = 'nier-hero.html';
                     }, 260);
                 }, 900);
